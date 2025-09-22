@@ -15,9 +15,12 @@ const MindMapNode = ({
   onDoubleClick,
   onExpandWithAI,
   isExpanding,
+  onDrag,
 }) => {
   const meshRef = useRef();
   const textRef = useRef();
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0, z: 0 });
 
   // Animation for selected node
   useFrame((state) => {
@@ -42,7 +45,40 @@ const MindMapNode = ({
     onDoubleClick(node.id);
   };
 
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    setIsDragging(true);
+    setDragStart({
+      x: e.point.x,
+      y: e.point.y,
+      z: e.point.z,
+    });
+  };
+
+  const handlePointerMove = (e) => {
+    if (isDragging && onDrag) {
+      e.stopPropagation();
+      const newPosition = {
+        x: node.x + (e.point.x - dragStart.x),
+        y: node.y + (e.point.y - dragStart.y),
+        z: node.z + (e.point.z - dragStart.z),
+      };
+      onDrag(node.id, newPosition);
+      setDragStart({
+        x: e.point.x,
+        y: e.point.y,
+        z: e.point.z,
+      });
+    }
+  };
+
+  const handlePointerUp = (e) => {
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
   const getNodeColor = () => {
+    if (isDragging) return "#ffa500"; // Orange when dragging
     if (isSelected) return "#667eea";
     if (isExpanding) return "#ff6b6b";
     return node.color || "#4ecdc4";
@@ -55,6 +91,9 @@ const MindMapNode = ({
         args={[node.size || 1, 32, 32]}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
         <meshStandardMaterial
           color={getNodeColor()}
@@ -125,6 +164,9 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
   const [error, setError] = useState(null);
 
   const canvasRef = useRef();
+  const rendererRef = useRef();
+  const sceneRef = useRef();
+  const cameraRef = useRef();
 
   // Load mind map data on component mount
   useEffect(() => {
@@ -214,6 +256,17 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
     },
     [nodes]
   );
+
+  // Handle node dragging
+  const handleNodeDrag = useCallback((nodeId, newPosition) => {
+    setNodes((prev) =>
+      prev.map((node) =>
+        node.id === nodeId
+          ? { ...node, x: newPosition.x, y: newPosition.y, z: newPosition.z }
+          : node
+      )
+    );
+  }, []);
 
   // Add new node manually
   const addNode = useCallback(() => {
@@ -312,47 +365,68 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
     [nodes]
   );
 
-  // Export as PNG
+  // Export as PNG - Using Velocify approach for proper 3D snapshot
   const exportAsPNG = useCallback(async () => {
     try {
-      console.log("Starting PNG export using html2canvas");
+      console.log("Starting PNG export using Velocify 3D capture method");
 
-      // Import html2canvas dynamically
-      const html2canvas = (await import("html2canvas")).default;
-
-      const mindmapContainer = document.querySelector(".mindmap-canvas");
-      if (!mindmapContainer) {
-        throw new Error("Mind map container not found");
+      // Check if we have the necessary references
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) {
+        throw new Error(
+          "3D scene not ready for export - missing renderer, scene, or camera"
+        );
       }
 
-      // Wait a bit to ensure the 3D scene is fully rendered
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+
+      // Wait a bit to ensure the scene is fully rendered
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      console.log("Capturing mind map with html2canvas...");
+      // Force a re-render by temporarily changing the camera position slightly
+      const originalPosition = camera.position.clone();
+      camera.position.x += 0.001;
+      camera.position.y += 0.001;
+      camera.position.z += 0.001;
 
-      // Use html2canvas to capture the mind map container
-      const canvas = await html2canvas(mindmapContainer, {
-        backgroundColor: "#2d3748",
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: 1200,
-        height: 800,
-        onclone: (clonedDoc) => {
-          // Ensure the cloned document has the same styling
-          const clonedContainer = clonedDoc.querySelector(".mindmap-canvas");
-          if (clonedContainer) {
-            clonedContainer.style.width = "1200px";
-            clonedContainer.style.height = "800px";
-          }
-        },
-      });
+      // Render the scene
+      renderer.render(scene, camera);
 
-      const dataURL = canvas.toDataURL("image/png", 0.95);
+      // Restore original position
+      camera.position.copy(originalPosition);
+
+      // Wait a bit more for the render to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      console.log("Capturing 3D mind map snapshot...");
+
+      // Set high resolution for export
+      const pixelRatio = 2;
+      const width = 1200;
+      const height = 800;
+
+      // Set up the renderer for export
+      const originalSize = renderer.getSize(new THREE.Vector2());
+      const originalPixelRatio = renderer.getPixelRatio();
+
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setClearColor("#d1d5db", 1.0);
+
+      // Render the scene
+      renderer.render(scene, camera);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Try to get image data
+      const dataURL = renderer.domElement.toDataURL("image/png", 0.95);
+
+      // Restore original settings
+      renderer.setSize(originalSize.x, originalSize.y);
+      renderer.setPixelRatio(originalPixelRatio);
 
       if (!dataURL || dataURL === "data:,") {
-        throw new Error("Failed to generate image data from mind map");
+        throw new Error("Failed to generate image data from 3D scene");
       }
 
       console.log("PNG export successful, data URL length:", dataURL.length);
@@ -471,11 +545,29 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
         <Canvas
           ref={canvasRef}
           camera={{ position: [0, 0, 15], fov: 75 }}
-          gl={{ antialias: true, alpha: false }}
+          gl={{
+            antialias: true,
+            alpha: false,
+            preserveDrawingBuffer: true,
+            powerPreference: "high-performance",
+          }}
           style={{
-            background: "linear-gradient(135deg, #2d3748 0%, #1a202c 100%)",
+            background: "linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%)",
+          }}
+          onCreated={({ gl, camera, scene, size }) => {
+            // Store references for snapshot capture
+            canvasRef.current = gl.domElement;
+            rendererRef.current = gl;
+            sceneRef.current = scene;
+            cameraRef.current = camera;
+            console.log("3D Canvas created:", {
+              canvas: canvasRef.current,
+              size,
+              preserveDrawingBuffer: true,
+            });
           }}
         >
+          <color attach="background" args={["#d1d5db"]} />
           <ambientLight intensity={0.8} />
           <directionalLight position={[10, 10, 5]} intensity={1.2} />
           <pointLight position={[-10, -10, -10]} intensity={0.7} />
@@ -497,6 +589,7 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
               onDoubleClick={handleNodeDoubleClick}
               onExpandWithAI={expandWithAI}
               isExpanding={isExpanding && selectedNodeId === node.id}
+              onDrag={handleNodeDrag}
             />
           ))}
 
@@ -520,6 +613,7 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
         <ul>
           <li>Click nodes to select them</li>
           <li>Double-click nodes to edit their labels</li>
+          <li>Drag nodes to reposition them in 3D space</li>
           <li>Use mouse to drag, zoom, and rotate the 3D view</li>
           <li>
             Select a node and click "Expand with AI" for intelligent suggestions

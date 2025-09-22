@@ -186,7 +186,7 @@
 .mindmap-canvas {
   flex: 1;
   position: relative;
-  background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+  background: linear-gradient(135deg, #d1d5db 0%, #9ca3af 100%);
   overflow: hidden;
 }
 

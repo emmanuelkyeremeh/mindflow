@@ -4,6 +4,7 @@ import {
   getUserMindMaps,
   createMindMap,
   checkUserMapLimit,
+  deleteMindMap,
 } from "../services/mindmapService";
 import MindFlowLogo from "./MindFlowLogo";
 import MindMap from "./MindMap";
@@ -19,6 +20,11 @@ const Dashboard = () => {
     currentCount: 0,
     limit: 5,
   });
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newMapTitle, setNewMapTitle] = useState("New Mind Map");
+  const [newMapDescription, setNewMapDescription] = useState(
+    "A fresh mind map to explore your ideas"
+  );
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -54,7 +60,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleCreateNewMap = async () => {
+  const handleCreateNewMap = () => {
     if (!user) {
       alert("Please sign in to create mind maps.");
       return;
@@ -67,17 +73,50 @@ const Dashboard = () => {
       return;
     }
 
+    setShowCreateModal(true);
+  };
+
+  const handleConfirmCreateMap = async () => {
     try {
       const newMap = await createMindMap(user.uid, {
-        title: "New Mind Map",
-        description: "A fresh mind map to explore your ideas",
+        title: newMapTitle.trim() || "New Mind Map",
+        description:
+          newMapDescription.trim() || "A fresh mind map to explore your ideas",
       });
 
       setMindMaps((prev) => [newMap, ...prev]);
       setMapLimit((prev) => ({ ...prev, currentCount: prev.currentCount + 1 }));
+      setShowCreateModal(false);
+      setNewMapTitle("New Mind Map");
+      setNewMapDescription("A fresh mind map to explore your ideas");
     } catch (error) {
       console.error("Error creating mind map:", error);
       alert("Failed to create mind map. Please try again.");
+    }
+  };
+
+  const handleCancelCreateMap = () => {
+    setShowCreateModal(false);
+    setNewMapTitle("New Mind Map");
+    setNewMapDescription("A fresh mind map to explore your ideas");
+  };
+
+  const handleDeleteMap = async (mapId) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this mind map? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteMindMap(mapId);
+      setMindMaps((prev) => prev.filter((map) => map.id !== mapId));
+      setMapLimit((prev) => ({ ...prev, currentCount: prev.currentCount - 1 }));
+    } catch (error) {
+      console.error("Error deleting mind map:", error);
+      alert("Failed to delete mind map. Please try again.");
     }
   };
 
@@ -204,46 +243,16 @@ const Dashboard = () => {
                     </div>
                     <div className="mindmap-actions">
                       <button
-                        className="action-button edit"
+                        className="action-button open"
                         onClick={() => setSelectedMapId(map.mapId)}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <path
-                            d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        Open
                       </button>
-                      <button className="action-button delete">
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <path
-                            d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                      <button
+                        className="action-button delete"
+                        onClick={() => handleDeleteMap(map.id)}
+                      >
+                        Delete
                       </button>
                     </div>
                   </div>
@@ -291,6 +300,59 @@ const Dashboard = () => {
           </div>
         </div>
       </main>
+
+      {/* Create Mind Map Modal */}
+      {showCreateModal && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3>Create New Mind Map</h3>
+              <button className="modal-close" onClick={handleCancelCreateMap}>
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label htmlFor="map-title">Title</label>
+                <input
+                  id="map-title"
+                  type="text"
+                  value={newMapTitle}
+                  onChange={(e) => setNewMapTitle(e.target.value)}
+                  placeholder="Enter mind map title"
+                  className="form-input"
+                  autoFocus
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="map-description">Description</label>
+                <textarea
+                  id="map-description"
+                  value={newMapDescription}
+                  onChange={(e) => setNewMapDescription(e.target.value)}
+                  placeholder="Enter mind map description"
+                  className="form-textarea"
+                  rows="3"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="modal-button secondary"
+                onClick={handleCancelCreateMap}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-button primary"
+                onClick={handleConfirmCreateMap}
+              >
+                Create Mind Map
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

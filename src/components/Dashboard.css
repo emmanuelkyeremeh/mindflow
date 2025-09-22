@@ -219,6 +219,25 @@
 .mindmaps-list {
   max-height: 500px;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.mindmaps-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mindmaps-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.mindmaps-list::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.5);
+  border-radius: 3px;
+}
+
+.mindmaps-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.7);
 }
 
 .empty-state {
@@ -249,9 +268,13 @@
   margin-bottom: 15px;
   border: 1px solid rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
-  display: flex;
+  /* display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: flex-start; */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 15px;
+  min-height: 120px;
 }
 
 .mindmap-item:hover {
@@ -262,6 +285,7 @@
 
 .mindmap-info {
   flex: 1;
+  min-width: 0; /* Allow text to wrap */
 }
 
 .mindmap-info h3 {
@@ -288,12 +312,13 @@
 .mindmap-actions {
   display: flex;
   gap: 8px;
-  margin-left: 15px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  flex-shrink: 0;
 }
 
 .action-button {
-  width: 32px;
-  height: 32px;
+  padding: 8px 16px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -301,15 +326,18 @@
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 70px;
 }
 
-.action-button.edit {
+.action-button.open {
   background: linear-gradient(135deg, #4ecdc4 0%, #6ed5cd 100%);
   color: white;
 }
 
-.action-button.edit:hover {
-  transform: scale(1.1);
+.action-button.open:hover {
+  transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(78, 205, 196, 0.4);
 }
 
@@ -319,9 +347,30 @@
 }
 
 .action-button.delete:hover {
-  transform: scale(1.1);
+  transform: translateY(-2px);
   box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
 }
+
+.action-button.save {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  color: white;
+}
+
+.action-button.save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+}
+
+.action-button.cancel {
+  background: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%);
+  color: white;
+}
+
+.action-button.cancel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(107, 114, 128, 0.4);
+}
+
 
 .dashboard-main-area {
   background: rgba(255, 255, 255, 0.9);
@@ -425,6 +474,165 @@
   margin: 0;
 }
 
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(5px);
+}
+
+.modal-content {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: modalSlideIn 0.3s ease;
+  color: #000000;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 0 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.modal-header h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #000000;
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #374151;
+}
+
+.modal-body {
+  padding: 0 24px 20px 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  background: white;
+  color: #000000;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  background: white;
+  color: #000000;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px 24px 24px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.modal-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  min-width: 100px;
+}
+
+.modal-button.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.modal-button.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.modal-button.secondary {
+  background: #f3f4f6;
+  color: #000000;
+  border: 1px solid #d1d5db;
+}
+
+.modal-button.secondary:hover {
+  background: #e5e7eb;
+  transform: translateY(-1px);
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .dashboard-content {
@@ -469,5 +677,39 @@
   .features-preview {
     grid-template-columns: 1fr;
     gap: 20px;
+  }
+
+  .mindmap-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    min-height: auto;
+  }
+
+  .mindmap-actions {
+    margin-left: 0;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .action-button {
+    flex: 1;
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mindmap-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-button {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .mindmap-item {
+    padding: 15px;
   }
 }
