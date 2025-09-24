@@ -5,6 +5,8 @@ import * as THREE from "three";
 import { generateNodeExpansions } from "../config/openrouter";
 import { clusterRelatedNodes } from "../config/brain";
 import { saveMindMap, loadMindMap } from "../services/mindmapService";
+import NodeEditModal from "./NodeEditModal";
+import NodeDeleteModal from "./NodeDeleteModal";
 import "./MindMap.css";
 
 // Node component for individual mind map nodes
@@ -108,7 +110,7 @@ const MindMapNode = ({
         ref={textRef}
         position={[0, 0, node.size + 0.5]}
         fontSize={0.3}
-        color="white"
+        color="black"
         anchorX="center"
         anchorY="middle"
         maxWidth={3}
@@ -132,9 +134,10 @@ const MindMapNode = ({
 };
 
 // Connection line component
-const Connection = ({ source, target, nodes }) => {
-  const sourceNode = nodes.find((n) => n.id === source);
-  const targetNode = nodes.find((n) => n.id === target);
+const Connection = ({ edge, nodes, isSelected, onSelect, onHover }) => {
+  const sourceNode = nodes.find((n) => n.id === edge.source);
+  const targetNode = nodes.find((n) => n.id === edge.target);
+  const [isHovered, setIsHovered] = useState(false);
 
   if (!sourceNode || !targetNode) return null;
 
@@ -143,13 +146,52 @@ const Connection = ({ source, target, nodes }) => {
     new THREE.Vector3(targetNode.x, targetNode.y, targetNode.z),
   ];
 
+  const handleClick = (e) => {
+    e.stopPropagation();
+    onSelect(edge.id);
+  };
+
+  const handlePointerEnter = (e) => {
+    e.stopPropagation();
+    setIsHovered(true);
+    if (onHover) onHover(edge.id, true);
+  };
+
+  const handlePointerLeave = (e) => {
+    e.stopPropagation();
+    setIsHovered(false);
+    if (onHover) onHover(edge.id, false);
+  };
+
+  // Determine line properties based on state
+  const getLineColor = () => {
+    if (isSelected) return "#ff6b6b";
+    if (isHovered) return "#f59e0b"; // Orange for hover
+    return "#667eea";
+  };
+
+  const getLineWidth = () => {
+    if (isSelected) return 4;
+    if (isHovered) return 3;
+    return 2;
+  };
+
+  const getOpacity = () => {
+    if (isSelected) return 0.9;
+    if (isHovered) return 0.8;
+    return 0.6;
+  };
+
   return (
     <Line
       points={points}
-      color="#667eea"
-      lineWidth={2}
+      color={getLineColor()}
+      lineWidth={getLineWidth()}
       transparent
-      opacity={0.6}
+      opacity={getOpacity()}
+      onClick={handleClick}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
     />
   );
 };
@@ -162,11 +204,57 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
   const [isExpanding, setIsExpanding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [backgroundColor, setBackgroundColor] = useState("#d1d5db");
+  const [connectionMode, setConnectionMode] = useState(false);
+  const [connectionSource, setConnectionSource] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [editingNodeId, setEditingNodeId] = useState(null);
+  const [selectedConnectionId, setSelectedConnectionId] = useState(null);
+  const [hoveredConnectionId, setHoveredConnectionId] = useState(null);
 
   const canvasRef = useRef();
   const rendererRef = useRef();
   const sceneRef = useRef();
   const cameraRef = useRef();
+
+  // History management functions
+  const saveToHistory = useCallback(
+    (newNodes, newEdges) => {
+      const newState = { nodes: [...newNodes], edges: [...newEdges] };
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(newState);
+
+      // Keep only last 2 states
+      if (newHistory.length > 2) {
+        newHistory.shift();
+      }
+
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    },
+    [history, historyIndex]
+  );
+
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      const prevState = history[historyIndex - 1];
+      setNodes(prevState.nodes);
+      setEdges(prevState.edges);
+      setHistoryIndex(historyIndex - 1);
+    }
+  }, [history, historyIndex]);
+
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const nextState = history[historyIndex + 1];
+      setNodes(nextState.nodes);
+      setEdges(nextState.edges);
+      setHistoryIndex(historyIndex + 1);
+    }
+  }, [history, historyIndex]);
 
   // Load mind map data on component mount
   useEffect(() => {
@@ -232,40 +320,150 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
       const timeoutId = setTimeout(saveMap, 1000); // Debounce saves
       return () => clearTimeout(timeoutId);
     }
-  }, [nodes, edges, mapId, userId, onSave]);
+  }, [nodes, edges, mapId, userId]);
 
   // Handle node selection
-  const handleNodeSelect = useCallback((nodeId) => {
-    setSelectedNodeId(nodeId);
-  }, []);
+  const handleNodeSelect = useCallback(
+    (nodeId) => {
+      if (connectionMode) {
+        if (!connectionSource) {
+          setConnectionSource(nodeId);
+          setSelectedNodeId(nodeId);
+        } else if (connectionSource !== nodeId) {
+          // Create connection
+          const newEdge = {
+            id: `${connectionSource}-${nodeId}`,
+            source: connectionSource,
+            target: nodeId,
+          };
+
+          // Check if connection already exists
+          const existingEdge = edges.find(
+            (e) =>
+              (e.source === connectionSource && e.target === nodeId) ||
+              (e.source === nodeId && e.target === connectionSource)
+          );
+
+          if (!existingEdge) {
+            const newEdges = [...edges, newEdge];
+            setEdges(newEdges);
+            saveToHistory(nodes, newEdges);
+          }
+
+          setConnectionSource(null);
+          setConnectionMode(false);
+          setSelectedNodeId(nodeId);
+        }
+      } else {
+        setSelectedNodeId(nodeId);
+        setSelectedConnectionId(null); // Clear connection selection when selecting node
+      }
+    },
+    [connectionMode, connectionSource, edges, nodes, saveToHistory]
+  );
 
   // Handle node double-click for editing
-  const handleNodeDoubleClick = useCallback(
-    (nodeId) => {
-      const newLabel = prompt(
-        "Edit node label:",
-        nodes.find((n) => n.id === nodeId)?.label || ""
-      );
-      if (newLabel !== null && newLabel.trim()) {
+  const handleNodeDoubleClick = useCallback((nodeId) => {
+    setEditingNodeId(nodeId);
+    setShowEditModal(true);
+  }, []);
+
+  // Handle node label save
+  const handleNodeLabelSave = useCallback(
+    (newLabel) => {
+      if (editingNodeId && newLabel.trim()) {
         setNodes((prev) =>
           prev.map((node) =>
-            node.id === nodeId ? { ...node, label: newLabel.trim() } : node
+            node.id === editingNodeId
+              ? { ...node, label: newLabel.trim() }
+              : node
           )
+        );
+        saveToHistory(
+          nodes.map((node) =>
+            node.id === editingNodeId
+              ? { ...node, label: newLabel.trim() }
+              : node
+          ),
+          edges
         );
       }
     },
-    [nodes]
+    [editingNodeId, nodes, edges, saveToHistory]
   );
 
-  // Handle node dragging
+  // Handle node dragging with improved bounds
   const handleNodeDrag = useCallback((nodeId, newPosition) => {
+    // Constrain position to keep nodes in view
+    const constrainedPosition = {
+      x: Math.max(-15, Math.min(15, newPosition.x)),
+      y: Math.max(-10, Math.min(10, newPosition.y)),
+      z: Math.max(-15, Math.min(15, newPosition.z)),
+    };
+
     setNodes((prev) =>
       prev.map((node) =>
         node.id === nodeId
-          ? { ...node, x: newPosition.x, y: newPosition.y, z: newPosition.z }
+          ? {
+              ...node,
+              x: constrainedPosition.x,
+              y: constrainedPosition.y,
+              z: constrainedPosition.z,
+            }
           : node
       )
     );
+  }, []);
+
+  // Delete selected node
+  const deleteSelectedNode = useCallback(() => {
+    if (!selectedNodeId) return;
+    setShowDeleteModal(true);
+  }, [selectedNodeId]);
+
+  // Handle node deletion confirmation
+  const handleNodeDeleteConfirm = useCallback(() => {
+    if (!selectedNodeId) return;
+
+    const newNodes = nodes.filter((node) => node.id !== selectedNodeId);
+    const newEdges = edges.filter(
+      (edge) => edge.source !== selectedNodeId && edge.target !== selectedNodeId
+    );
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+    setSelectedNodeId(null);
+    saveToHistory(newNodes, newEdges);
+  }, [selectedNodeId, nodes, edges, saveToHistory]);
+
+  // Toggle connection mode
+  const toggleConnectionMode = useCallback(() => {
+    setConnectionMode(!connectionMode);
+    setConnectionSource(null);
+    if (connectionMode) {
+      setSelectedNodeId(null);
+    }
+  }, [connectionMode]);
+
+  // Handle connection selection
+  const handleConnectionSelect = useCallback((connectionId) => {
+    setSelectedConnectionId(connectionId);
+    setSelectedNodeId(null); // Clear node selection when selecting connection
+  }, []);
+
+  // Disconnect selected connection
+  const disconnectSelectedConnection = useCallback(() => {
+    if (!selectedConnectionId) return;
+
+    const newEdges = edges.filter((edge) => edge.id !== selectedConnectionId);
+    setEdges(newEdges);
+    setSelectedConnectionId(null);
+    saveToHistory(nodes, newEdges);
+  }, [selectedConnectionId, edges, nodes, saveToHistory]);
+
+  // Handle edge hover
+  const handleEdgeHover = useCallback((edgeId, isHovering) => {
+    setHoveredConnectionId(isHovering ? edgeId : null);
   }, []);
 
   // Add new node manually
@@ -283,7 +481,8 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
       color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
     };
 
-    setNodes((prev) => [...prev, newNode]);
+    const newNodes = [...nodes, newNode];
+    let newEdges = [...edges];
 
     // If a node is selected, create an edge to it
     if (selectedNodeId) {
@@ -292,9 +491,27 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
         source: selectedNodeId,
         target: newNodeId,
       };
-      setEdges((prev) => [...prev, newEdge]);
+      newEdges = [...edges, newEdge];
     }
-  }, [nodes, selectedNodeId]);
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+    saveToHistory(newNodes, newEdges);
+  }, [nodes, edges, selectedNodeId, saveToHistory]);
+
+  // Background color options
+  const backgroundColors = [
+    "#d1d5db", // Light gray
+    "#f3f4f6", // Very light gray
+    "#e5e7eb", // Gray
+    "#fef3c7", // Light yellow
+    "#dbeafe", // Light blue
+    "#fce7f3", // Light pink
+    "#d1fae5", // Light green
+    "#f3e8ff", // Light purple
+    "#fed7d7", // Light red
+    "#1f2937", // Dark gray
+  ];
 
   // Expand node with AI
   const expandWithAI = useCallback(
@@ -321,25 +538,30 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
           relatedConcepts
         );
 
-        // Create new nodes from suggestions
+        // Create new nodes from suggestions with better positioning
         const newNodes = suggestions.map((suggestion, index) => {
           const newNodeId = (
             Math.max(...nodes.map((n) => parseInt(n.id)), 0) +
             index +
             2
           ).toString();
+
+          // Position nodes in a circular pattern around the parent node
+          const angle = (index / suggestions.length) * Math.PI * 2;
+          const radius = 6 + Math.random() * 2; // Random radius between 6-8
+
           return {
             id: newNodeId,
             label: suggestion,
-            x: node.x + (Math.random() - 0.5) * 8,
-            y: node.y + (Math.random() - 0.5) * 8,
-            z: node.z + (Math.random() - 0.5) * 8,
+            x: node.x + Math.cos(angle) * radius,
+            y: node.y + (Math.random() - 0.5) * 4, // Slight vertical variation
+            z: node.z + Math.sin(angle) * radius,
             size: 0.8,
             color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
           };
         });
 
-        // Create edges from selected node to new nodes
+        // Create edges from selected node to new nodes (ensuring all are connected)
         const newEdges = suggestions.map((_, index) => {
           const newNodeId = (
             Math.max(...nodes.map((n) => parseInt(n.id)), 0) +
@@ -353,8 +575,37 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
           };
         });
 
+        // Add additional connections between new nodes for better connectivity
+        const additionalEdges = [];
+        for (let i = 0; i < newNodes.length - 1; i++) {
+          const currentNodeId = newNodes[i].id;
+          const nextNodeId = newNodes[i + 1].id;
+
+          // Connect adjacent nodes with 30% probability
+          if (Math.random() < 0.3) {
+            additionalEdges.push({
+              id: `${currentNodeId}-${nextNodeId}`,
+              source: currentNodeId,
+              target: nextNodeId,
+            });
+          }
+        }
+
+        // Connect first and last nodes occasionally for circular connections
+        if (newNodes.length > 2 && Math.random() < 0.2) {
+          additionalEdges.push({
+            id: `${newNodes[0].id}-${newNodes[newNodes.length - 1].id}`,
+            source: newNodes[0].id,
+            target: newNodes[newNodes.length - 1].id,
+          });
+        }
+
         setNodes((prev) => [...prev, ...newNodes]);
-        setEdges((prev) => [...prev, ...newEdges]);
+        setEdges((prev) => [...prev, ...newEdges, ...additionalEdges]);
+        saveToHistory(
+          [...nodes, ...newNodes],
+          [...edges, ...newEdges, ...additionalEdges]
+        );
       } catch (err) {
         console.error("Error expanding with AI:", err);
         setError("Failed to expand with AI. Please try again.");
@@ -362,7 +613,7 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
         setIsExpanding(false);
       }
     },
-    [nodes]
+    [nodes, edges, saveToHistory]
   );
 
   // Export as PNG - Using Velocify approach for proper 3D snapshot
@@ -504,9 +755,57 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
               Expand with AI
             </button>
           )}
+
+          <button
+            className={`control-button ${
+              connectionMode ? "active" : "secondary"
+            }`}
+            onClick={toggleConnectionMode}
+            title="Connect Nodes"
+          >
+            <span>🔗</span> {connectionMode ? "Cancel Connect" : "Connect"}
+          </button>
+
+          {selectedNodeId && (
+            <button
+              className="control-button danger"
+              onClick={deleteSelectedNode}
+              title="Delete Selected Node"
+            >
+              <span>🗑️</span> Delete
+            </button>
+          )}
+
+          {selectedConnectionId && (
+            <button
+              className="control-button danger"
+              onClick={disconnectSelectedConnection}
+              title="Disconnect Selected Connection"
+            >
+              <span>✂️</span> Disconnect
+            </button>
+          )}
         </div>
 
         <div className="control-group">
+          <button
+            className="control-button secondary"
+            onClick={undo}
+            disabled={historyIndex <= 0}
+            title="Undo Last Action"
+          >
+            <span>↶</span> Undo
+          </button>
+
+          <button
+            className="control-button secondary"
+            onClick={redo}
+            disabled={historyIndex >= history.length - 1}
+            title="Redo Last Action"
+          >
+            <span>↷</span> Redo
+          </button>
+
           <button
             className="control-button secondary"
             onClick={exportAsPNG}
@@ -524,10 +823,120 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
           </button>
         </div>
 
+        {/* Background Color Selector */}
+        <div className="control-group background-selector">
+          <span className="control-label">Background:</span>
+          <div className="color-tiles">
+            {backgroundColors.map((color) => (
+              <button
+                key={color}
+                className={`color-tile ${
+                  backgroundColor === color ? "active" : ""
+                }`}
+                style={{ backgroundColor: color }}
+                onClick={() => setBackgroundColor(color)}
+                title={`Set background to ${color}`}
+              />
+            ))}
+          </div>
+        </div>
+
         {selectedNodeId && (
           <div className="selected-node-info">
-            Selected:{" "}
-            <strong>{nodes.find((n) => n.id === selectedNodeId)?.label}</strong>
+            <button
+              className="focus-button"
+              onClick={() => {
+                const node = nodes.find((n) => n.id === selectedNodeId);
+                if (node) {
+                  // Focus camera on selected node
+                  if (cameraRef.current) {
+                    cameraRef.current.position.set(
+                      node.x + 5,
+                      node.y + 5,
+                      node.z + 5
+                    );
+                    cameraRef.current.lookAt(node.x, node.y, node.z);
+                  }
+                }
+              }}
+              title="Focus on Selected Node"
+            >
+              Focus
+            </button>
+            <span>
+              Selected:{" "}
+              <strong>
+                {nodes.find((n) => n.id === selectedNodeId)?.label}
+              </strong>
+            </span>
+          </div>
+        )}
+
+        {selectedConnectionId && (
+          <div className="selected-connection-info">
+            <span>
+              Selected Connection:{" "}
+              <strong>
+                {(() => {
+                  const connection = edges.find(
+                    (e) => e.id === selectedConnectionId
+                  );
+                  if (connection) {
+                    const sourceNode = nodes.find(
+                      (n) => n.id === connection.source
+                    );
+                    const targetNode = nodes.find(
+                      (n) => n.id === connection.target
+                    );
+                    return `${sourceNode?.label} ↔ ${targetNode?.label}`;
+                  }
+                  return "Unknown";
+                })()}
+              </strong>
+            </span>
+          </div>
+        )}
+
+        {connectionMode && (
+          <div className="connection-mode-info">
+            {!connectionSource ? (
+              <span>Click a node to start connection</span>
+            ) : (
+              <span>
+                Click another node to connect to{" "}
+                <strong>
+                  {nodes.find((n) => n.id === connectionSource)?.label}
+                </strong>
+              </span>
+            )}
+          </div>
+        )}
+
+        {hoveredConnectionId && !selectedConnectionId && (
+          <div className="hovered-connection-info">
+            <span>
+              Hovering:{" "}
+              <strong>
+                {(() => {
+                  const connection = edges.find(
+                    (e) => e.id === hoveredConnectionId
+                  );
+                  if (connection) {
+                    const sourceNode = nodes.find(
+                      (n) => n.id === connection.source
+                    );
+                    const targetNode = nodes.find(
+                      (n) => n.id === connection.target
+                    );
+                    return `${sourceNode?.label} ↔ ${targetNode?.label}`;
+                  }
+                  return "Unknown";
+                })()}
+              </strong>
+            </span>
+            <span className="hover-hint">
+              Click to select, then use Delete button to remove
+            </span>
           </div>
         )}
       </div>
@@ -567,7 +976,7 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
             });
           }}
         >
-          <color attach="background" args={["#d1d5db"]} />
+          <color attach="background" args={[backgroundColor]} />
           <ambientLight intensity={0.8} />
           <directionalLight position={[10, 10, 5]} intensity={1.2} />
           <pointLight position={[-10, -10, -10]} intensity={0.7} />
@@ -597,9 +1006,11 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
           {edges.map((edge) => (
             <Connection
               key={edge.id}
-              source={edge.source}
-              target={edge.target}
+              edge={edge}
               nodes={nodes}
+              isSelected={selectedConnectionId === edge.id}
+              onSelect={handleConnectionSelect}
+              onHover={handleEdgeHover}
             />
           ))}
         </Canvas>
@@ -615,12 +1026,37 @@ const MindMap = ({ mapId, userId, onSave, onLoad }) => {
           <li>Double-click nodes to edit their labels</li>
           <li>Drag nodes to reposition them in 3D space</li>
           <li>Use mouse to drag, zoom, and rotate the 3D view</li>
+          <li>Click "Connect" to link nodes together</li>
           <li>
-            Select a node and click "Expand with AI" for intelligent suggestions
+            Hover over connections to highlight them, then click to select
           </li>
+          <li>Click "Delete" button to remove selected nodes or connections</li>
+          <li>Use "Undo/Redo" to reverse your last 2 actions</li>
+          <li>Click "Focus" to center view on selected node</li>
+          <li>Change background color using color tiles</li>
+          <li>Select a node and click "Expand with AI" for suggestions</li>
           <li>Export your mind map as PNG or JSON</li>
         </ul>
       </div>
+
+      {/* Node Edit Modal */}
+      <NodeEditModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingNodeId(null);
+        }}
+        onSave={handleNodeLabelSave}
+        nodeLabel={nodes.find((n) => n.id === editingNodeId)?.label || ""}
+      />
+
+      {/* Node Delete Modal */}
+      <NodeDeleteModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleNodeDeleteConfirm}
+        nodeLabel={nodes.find((n) => n.id === selectedNodeId)?.label || ""}
+      />
     </div>
   );
 };

@@ -120,6 +120,17 @@
   justify-content: center;
   gap: 15px;
   margin-bottom: 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+.auth-logo:hover {
+  background: rgba(102, 126, 234, 0.1);
+  transform: scale(1.05);
 }
 
 .auth-logo h1 {

@@ -8,6 +8,7 @@ import {
 } from "../services/mindmapService";
 import MindFlowLogo from "./MindFlowLogo";
 import MindMap from "./MindMap";
+import DeleteConfirmModal from "./DeleteConfirmModal";
 import "./Dashboard.css";
 
 const Dashboard = () => {
@@ -25,6 +26,8 @@ const Dashboard = () => {
   const [newMapDescription, setNewMapDescription] = useState(
     "A fresh mind map to explore your ideas"
   );
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [mindMapToDelete, setMindMapToDelete] = useState(null);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -101,22 +104,26 @@ const Dashboard = () => {
     setNewMapDescription("A fresh mind map to explore your ideas");
   };
 
-  const handleDeleteMap = async (mapId) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this mind map? This action cannot be undone."
-      )
-    ) {
-      return;
-    }
+  const handleDeleteMap = (mapId) => {
+    const mindMap = mindMaps.find((map) => map.id === mapId);
+    setMindMapToDelete(mindMap);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDeleteMap = async () => {
+    if (!mindMapToDelete) return;
 
     try {
-      await deleteMindMap(mapId);
-      setMindMaps((prev) => prev.filter((map) => map.id !== mapId));
+      await deleteMindMap(mindMapToDelete.id);
+      setMindMaps((prev) =>
+        prev.filter((map) => map.id !== mindMapToDelete.id)
+      );
       setMapLimit((prev) => ({ ...prev, currentCount: prev.currentCount - 1 }));
     } catch (error) {
       console.error("Error deleting mind map:", error);
       alert("Failed to delete mind map. Please try again.");
+    } finally {
+      setMindMapToDelete(null);
     }
   };
 
@@ -353,6 +360,20 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Delete Mind Map Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setMindMapToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteMap}
+        title="Delete Mind Map"
+        itemName={mindMapToDelete?.title}
+        itemType="mind map"
+        warningMessage="This action cannot be undone and will permanently remove all nodes and connections."
+      />
     </div>
   );
 };

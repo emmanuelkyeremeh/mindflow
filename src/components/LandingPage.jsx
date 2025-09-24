@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import MindFlowLogo from "./MindFlowLogo";
+import Navigation from "./Navigation";
 import "./LandingPage.css";
 
 const LandingPage = () => {
@@ -96,6 +97,7 @@ const LandingPage = () => {
 
   return (
     <div className="landing-page">
+      <Navigation />
       <canvas
         ref={canvasRef}
         className="particles-canvas"

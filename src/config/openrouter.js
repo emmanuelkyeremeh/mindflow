@@ -1,8 +1,8 @@
-// OpenRouter API configuration for DeepSeek
+// OpenRouter API configuration for Meta Llama
 export const openRouterConfig = {
   apiKey: import.meta.env.VITE_OPENROUTER_API_KEY,
   baseUrl: 'https://openrouter.ai/api/v1',
-  model: 'deepseek/deepseek-chat-v3.1:free',
+  model: 'meta-llama/llama-3.3-8b-instruct:free',
   siteUrl: import.meta.env.VITE_SITE_URL || 'http://localhost:5173',
   siteName: import.meta.env.VITE_SITE_NAME || 'MindFlow'
 };
@@ -18,7 +18,13 @@ export async function generateNodeExpansions(nodeLabel, existingNodes = []) {
     ? `Existing nodes in this mind map: ${existingNodes.join(', ')}. `
     : '';
 
-  const prompt = `${context}Given the node "${nodeLabel}", suggest 3-5 related concepts or ideas that would make good child nodes in a mind map. Focus on concepts that are directly related, complementary, or that would help expand understanding of "${nodeLabel}". Return only a JSON array of strings, no additional text.`;
+  const prompt = `${context}Given the central concept "${nodeLabel}", suggest 3-5 closely related concepts that would create meaningful connections in a mind map. These should be:
+1. Directly related to "${nodeLabel}" (subcategories, components, or aspects)
+2. Complementary concepts that enhance understanding
+3. Practical applications or examples
+4. Related processes or methodologies
+
+Focus on creating logical, meaningful connections. Return only a JSON array of strings, no additional text or explanations.`;
 
   try {
     const response = await fetch(`${openRouterConfig.baseUrl}/chat/completions`, {
@@ -65,9 +71,10 @@ export async function generateNodeExpansions(nodeLabel, existingNodes = []) {
 
     // Fallback: extract suggestions from text response
     const suggestions = content
+      .replace(/```json|```/g, '') // Remove code blocks
       .split(/[,\n-]/)
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && s !== '[' && s !== ']')
+      .map(s => s.trim().replace(/^["\[]|["\]]$/g, '')) // Remove quotes and brackets
+      .filter(s => s.length > 0 && s !== '[' && s !== ']' && !s.match(/^\d+\./)) // Remove numbered lists
       .slice(0, 5);
 
     return suggestions.length > 0 ? suggestions : [

@@ -1,6 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import MindFlowLogo from "./MindFlowLogo";
+import Navigation from "./Navigation";
 import "./PricingPage.css";
 
 const PricingPage = () => {
@@ -17,20 +18,7 @@ const PricingPage = () => {
 
   return (
     <div className="pricing-page">
-      {/* Header */}
-      <header className="pricing-header">
-        <div className="header-content">
-          <div className="header-left">
-            <MindFlowLogo size={40} />
-            <h1>MindFlow</h1>
-          </div>
-          <div className="header-right">
-            <button onClick={() => navigate("/")} className="back-button">
-              ← Back to Home
-            </button>
-          </div>
-        </div>
-      </header>
+      <Navigation />
 
       {/* Hero Section */}
       <section className="pricing-hero">

@@ -519,12 +519,19 @@
   padding: 24px 24px 0 24px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
-.modal-header h3 {
+.modal-header h1,
+.modal-header h2,
+.modal-header h3,
+.modal-header h4,
+.modal-header h5,
+.modal-header h6 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #000000;
+  color: white !important;
   margin: 0;
 }
 

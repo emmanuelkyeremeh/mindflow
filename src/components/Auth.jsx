@@ -75,10 +75,14 @@ const Auth = () => {
 
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-logo">
+          <button
+            className="auth-logo"
+            onClick={() => navigate("/")}
+            title="Go to Home"
+          >
             <MindFlowLogo size={50} />
             <h1>MindFlow</h1>
-          </div>
+          </button>
           <p>AI-powered 3D mind mapping for creative thinkers</p>
         </div>
 
